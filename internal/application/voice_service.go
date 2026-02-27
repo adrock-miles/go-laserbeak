@@ -17,16 +17,22 @@ type VoiceCommand struct {
 
 // VoiceService handles voice-to-text-to-command pipeline.
 // It transcribes audio, checks for the wake phrase, and parses voice commands.
+// For "play" commands, it uses the LLM to match against available options.
 type VoiceService struct {
-	stt        bot.STTService
-	wakePhrase string
+	stt         bot.STTService
+	llm         bot.LLMService
+	playOptions bot.PlayOptionsService
+	wakePhrase  string
 }
 
 // NewVoiceService creates a new VoiceService.
-func NewVoiceService(stt bot.STTService, wakePhrase string) *VoiceService {
+// playOptions and llm may be nil — if so, play commands pass through the raw transcription.
+func NewVoiceService(stt bot.STTService, wakePhrase string, llm bot.LLMService, playOptions bot.PlayOptionsService) *VoiceService {
 	return &VoiceService{
-		stt:        stt,
-		wakePhrase: strings.ToLower(wakePhrase),
+		stt:         stt,
+		llm:         llm,
+		playOptions: playOptions,
+		wakePhrase:  strings.ToLower(wakePhrase),
 	}
 }
 
@@ -45,7 +51,7 @@ func (s *VoiceService) HandleVoice(ctx context.Context, channelID, userID string
 
 	log.Printf("voice transcription from user %s: %s", userID, text)
 
-	cmd, ok := s.parseCommand(text)
+	cmd, ok := s.parseCommand(ctx, text)
 	if !ok {
 		return "", nil
 	}
@@ -56,7 +62,7 @@ func (s *VoiceService) HandleVoice(ctx context.Context, channelID, userID string
 
 // parseCommand checks if the transcription starts with the wake phrase
 // and parses the subsequent command.
-func (s *VoiceService) parseCommand(transcription string) (VoiceCommand, bool) {
+func (s *VoiceService) parseCommand(ctx context.Context, transcription string) (VoiceCommand, bool) {
 	lower := strings.ToLower(transcription)
 
 	// Check for wake phrase
@@ -77,8 +83,62 @@ func (s *VoiceService) parseCommand(transcription string) (VoiceCommand, bool) {
 		if query == "" {
 			return VoiceCommand{}, false
 		}
-		return VoiceCommand{Text: "!play " + query}, true
+		matched := s.matchPlayQuery(ctx, query)
+		return VoiceCommand{Text: "!play " + matched}, true
 	}
 
 	return VoiceCommand{}, false
+}
+
+// matchPlayQuery tries to match a spoken query against the available play options
+// using the LLM. Falls back to the raw query if matching is unavailable.
+func (s *VoiceService) matchPlayQuery(ctx context.Context, query string) string {
+	if s.playOptions == nil || s.llm == nil {
+		return query
+	}
+
+	options, err := s.playOptions.GetOptions(ctx)
+	if err != nil {
+		log.Printf("failed to get play options for matching: %v", err)
+		return query
+	}
+
+	if len(options) == 0 {
+		return query
+	}
+
+	// Build the options list for the LLM prompt
+	var optionNames []string
+	for _, opt := range options {
+		optionNames = append(optionNames, opt.Name)
+	}
+	optionsList := strings.Join(optionNames, "\n")
+
+	prompt := fmt.Sprintf(
+		"The user said: %q\n\n"+
+			"Available options:\n%s\n\n"+
+			"Which option best matches what the user asked for? "+
+			"Reply with ONLY the exact option name, nothing else. "+
+			"If nothing matches, reply with the user's original query exactly as given.",
+		query, optionsList,
+	)
+
+	messages := []bot.LLMMessage{
+		{Role: "system", Content: "You are a matching assistant. Given a spoken query and a list of available options, pick the best match. Reply with only the option name, no explanation."},
+		{Role: "user", Content: prompt},
+	}
+
+	result, err := s.llm.ChatCompletion(ctx, messages)
+	if err != nil {
+		log.Printf("LLM matching failed, using raw query: %v", err)
+		return query
+	}
+
+	result = strings.TrimSpace(result)
+	if result == "" {
+		return query
+	}
+
+	log.Printf("LLM matched %q -> %q", query, result)
+	return result
 }

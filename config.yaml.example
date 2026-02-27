@@ -19,3 +19,7 @@ bot:
   systemprompt: "You are Laserbeak, a helpful Discord assistant. Respond concisely and helpfully."
   maxhistory: 50
   wakephrase: "hey m'bot"  # Wake phrase for voice commands
+
+playoptions:
+  apiurl: ""              # URL to fetch play options (e.g. http://localhost:8080/options)
+  cachettl: "5m"          # How often to refresh the cached options list

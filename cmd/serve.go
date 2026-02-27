@@ -9,9 +9,11 @@ import (
 
 	"github.com/adrock-miles/GoBot-Laserbeak/internal/application"
 	"github.com/adrock-miles/GoBot-Laserbeak/internal/config"
+	"github.com/adrock-miles/GoBot-Laserbeak/internal/domain/bot"
 	"github.com/adrock-miles/GoBot-Laserbeak/internal/infrastructure/discord"
 	"github.com/adrock-miles/GoBot-Laserbeak/internal/infrastructure/llm"
 	"github.com/adrock-miles/GoBot-Laserbeak/internal/infrastructure/persistence"
+	"github.com/adrock-miles/GoBot-Laserbeak/internal/infrastructure/playoptions"
 	"github.com/spf13/cobra"
 )
 
@@ -52,27 +54,43 @@ func runServe(cmd *cobra.Command, args []string) error {
 		TextChannelID:  cfg.Discord.TextChannelID,
 	}
 
-	bot, err := discord.NewBot(botCfg)
+	discordBot, err := discord.NewBot(botCfg)
 	if err != nil {
 		return fmt.Errorf("create bot: %w", err)
 	}
 
-	bot.SetChatHandler(chatService.HandleMessage)
+	discordBot.SetChatHandler(chatService.HandleMessage)
 
 	// Set up voice service if STT API key is provided
 	if cfg.STT.APIKey != "" {
 		sttClient := llm.NewSTTClient(cfg.STT.APIKey, cfg.STT.BaseURL, cfg.STT.Model)
-		voiceService := application.NewVoiceService(sttClient, cfg.Bot.WakePhrase)
-		bot.SetVoiceHandler(voiceService.HandleVoice)
+
+		// Set up play options matching if API URL is configured
+		var playOpts bot.PlayOptionsService
+		var playOptsClient *playoptions.Client
+		if cfg.PlayOptions.APIURL != "" {
+			playOptsClient = playoptions.NewClient(cfg.PlayOptions.APIURL, cfg.PlayOptions.CacheTTL)
+			playOptsClient.Start()
+			playOpts = playOptsClient
+			log.Printf("Play options matching enabled (API: %s, cache TTL: %s)",
+				cfg.PlayOptions.APIURL, cfg.PlayOptions.CacheTTL)
+		}
+
+		voiceService := application.NewVoiceService(sttClient, cfg.Bot.WakePhrase, llmClient, playOpts)
+		discordBot.SetVoiceHandler(voiceService.HandleVoice)
 		log.Printf("Voice commands enabled (wake phrase: %q)", cfg.Bot.WakePhrase)
+
+		if playOptsClient != nil {
+			defer playOptsClient.Stop()
+		}
 	} else {
 		log.Println("Voice commands disabled (no STT API key configured)")
 	}
 
-	if err := bot.Start(); err != nil {
+	if err := discordBot.Start(); err != nil {
 		return fmt.Errorf("start bot: %w", err)
 	}
-	defer bot.Stop()
+	defer discordBot.Stop()
 
 	log.Printf("Laserbeak is running. Command prefix: %s", cfg.Discord.CommandPrefix)
 	if cfg.Discord.TextChannelID != "" {

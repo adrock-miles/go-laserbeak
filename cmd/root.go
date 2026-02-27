@@ -38,6 +38,8 @@ func init() {
 	rootCmd.PersistentFlags().String("voice-channel-id", "", "Voice channel ID to auto-join")
 	rootCmd.PersistentFlags().String("text-channel-id", "", "Text channel ID for voice command output")
 	rootCmd.PersistentFlags().String("wake-phrase", "", "Wake phrase for voice commands")
+	rootCmd.PersistentFlags().String("play-options-url", "", "URL to fetch play options from")
+	rootCmd.PersistentFlags().String("play-options-cache-ttl", "", "Cache TTL for play options (e.g. 5m)")
 
 	viper.BindPFlag("discord.token", rootCmd.PersistentFlags().Lookup("discord-token"))
 	viper.BindPFlag("llm.apikey", rootCmd.PersistentFlags().Lookup("llm-api-key"))
@@ -49,4 +51,6 @@ func init() {
 	viper.BindPFlag("discord.voicechannelid", rootCmd.PersistentFlags().Lookup("voice-channel-id"))
 	viper.BindPFlag("discord.textchannelid", rootCmd.PersistentFlags().Lookup("text-channel-id"))
 	viper.BindPFlag("bot.wakephrase", rootCmd.PersistentFlags().Lookup("wake-phrase"))
+	viper.BindPFlag("playoptions.apiurl", rootCmd.PersistentFlags().Lookup("play-options-url"))
+	viper.BindPFlag("playoptions.cachettl", rootCmd.PersistentFlags().Lookup("play-options-cache-ttl"))
 }

@@ -3,16 +3,24 @@ package config
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 )
 
 // Config holds all application configuration.
 type Config struct {
-	Discord  DiscordConfig
-	LLM      LLMConfig
-	STT      STTConfig
-	Bot      BotConfig
+	Discord     DiscordConfig
+	LLM         LLMConfig
+	STT         STTConfig
+	Bot         BotConfig
+	PlayOptions PlayOptionsConfig
+}
+
+// PlayOptionsConfig holds settings for the play options API.
+type PlayOptionsConfig struct {
+	APIURL   string        // URL to fetch play options from (e.g. http://localhost:8080/options)
+	CacheTTL time.Duration // how long to cache the options list
 }
 
 // DiscordConfig holds Discord-specific settings.
@@ -67,6 +75,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("bot.systemprompt", "You are Laserbeak, a helpful Discord assistant. Respond concisely and helpfully.")
 	viper.SetDefault("bot.maxhistory", 50)
 	viper.SetDefault("bot.wakephrase", "hey m'bot")
+	viper.SetDefault("playoptions.cachettl", "5m")
 
 	// Read config file (optional)
 	if err := viper.ReadInConfig(); err != nil {
@@ -98,6 +107,15 @@ func Load() (*Config, error) {
 			MaxHistory:   viper.GetInt("bot.maxhistory"),
 			WakePhrase:   viper.GetString("bot.wakephrase"),
 		},
+	}
+
+	cacheTTL, err := time.ParseDuration(viper.GetString("playoptions.cachettl"))
+	if err != nil {
+		cacheTTL = 5 * time.Minute
+	}
+	cfg.PlayOptions = PlayOptionsConfig{
+		APIURL:   viper.GetString("playoptions.apiurl"),
+		CacheTTL: cacheTTL,
 	}
 
 	if cfg.Discord.Token == "" {
