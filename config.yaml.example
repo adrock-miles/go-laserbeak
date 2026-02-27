@@ -1,0 +1,17 @@
+discord:
+  token: "YOUR_DISCORD_BOT_TOKEN"
+  commandprefix: "!laser "
+
+llm:
+  apikey: "YOUR_OPENAI_API_KEY"
+  baseurl: "https://api.openai.com/v1"
+  model: "gpt-4"
+
+stt:
+  apikey: "YOUR_OPENAI_API_KEY"  # Can be the same as llm.apikey
+  baseurl: "https://api.openai.com/v1"
+  model: "whisper-1"
+
+bot:
+  systemprompt: "You are Laserbeak, a helpful Discord assistant. Respond concisely and helpfully."
+  maxhistory: 50

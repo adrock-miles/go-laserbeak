@@ -1,0 +1,79 @@
+package cmd
+
+import (
+	"fmt"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/adrock-miles/GoBot-Laserbeak/internal/application"
+	"github.com/adrock-miles/GoBot-Laserbeak/internal/config"
+	"github.com/adrock-miles/GoBot-Laserbeak/internal/infrastructure/discord"
+	"github.com/adrock-miles/GoBot-Laserbeak/internal/infrastructure/llm"
+	"github.com/adrock-miles/GoBot-Laserbeak/internal/infrastructure/persistence"
+	"github.com/spf13/cobra"
+)
+
+var serveCmd = &cobra.Command{
+	Use:   "serve",
+	Short: "Start the Laserbeak Discord bot",
+	RunE:  runServe,
+}
+
+func init() {
+	rootCmd.AddCommand(serveCmd)
+}
+
+func runServe(cmd *cobra.Command, args []string) error {
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+
+	// Infrastructure
+	convRepo := persistence.NewInMemoryConversationRepo()
+	llmClient := llm.NewOpenAIClient(cfg.LLM.APIKey, cfg.LLM.BaseURL, cfg.LLM.Model)
+
+	// Application services
+	chatService := application.NewChatService(
+		convRepo,
+		llmClient,
+		cfg.Bot.SystemPrompt,
+		cfg.Bot.MaxHistory,
+	)
+
+	// Discord bot
+	bot, err := discord.NewBot(cfg.Discord.Token, cfg.Discord.CommandPrefix)
+	if err != nil {
+		return fmt.Errorf("create bot: %w", err)
+	}
+
+	bot.SetChatHandler(chatService.HandleMessage)
+
+	// Set up voice service if STT API key is provided
+	if cfg.STT.APIKey != "" {
+		sttClient := llm.NewSTTClient(cfg.STT.APIKey, cfg.STT.BaseURL, cfg.STT.Model)
+		voiceService := application.NewVoiceService(sttClient, chatService)
+		bot.SetVoiceHandler(voiceService.HandleVoice)
+		log.Println("Voice transcription enabled")
+	} else {
+		log.Println("Voice transcription disabled (no STT API key configured)")
+	}
+
+	if err := bot.Start(); err != nil {
+		return fmt.Errorf("start bot: %w", err)
+	}
+	defer bot.Stop()
+
+	log.Printf("Laserbeak is running. Command prefix: %s", cfg.Discord.CommandPrefix)
+	log.Println("Press Ctrl+C to exit")
+
+	// Wait for shutdown signal
+	sc := make(chan os.Signal, 1)
+	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM)
+	<-sc
+
+	log.Println("Shutting down...")
+	return nil
+}
