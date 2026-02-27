@@ -44,7 +44,15 @@ func runServe(cmd *cobra.Command, args []string) error {
 	)
 
 	// Discord bot
-	bot, err := discord.NewBot(cfg.Discord.Token, cfg.Discord.CommandPrefix)
+	botCfg := discord.BotConfig{
+		Token:          cfg.Discord.Token,
+		CommandPrefix:  cfg.Discord.CommandPrefix,
+		GuildID:        cfg.Discord.GuildID,
+		VoiceChannelID: cfg.Discord.VoiceChannelID,
+		TextChannelID:  cfg.Discord.TextChannelID,
+	}
+
+	bot, err := discord.NewBot(botCfg)
 	if err != nil {
 		return fmt.Errorf("create bot: %w", err)
 	}
@@ -54,11 +62,11 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// Set up voice service if STT API key is provided
 	if cfg.STT.APIKey != "" {
 		sttClient := llm.NewSTTClient(cfg.STT.APIKey, cfg.STT.BaseURL, cfg.STT.Model)
-		voiceService := application.NewVoiceService(sttClient, chatService)
+		voiceService := application.NewVoiceService(sttClient, cfg.Bot.WakePhrase)
 		bot.SetVoiceHandler(voiceService.HandleVoice)
-		log.Println("Voice transcription enabled")
+		log.Printf("Voice commands enabled (wake phrase: %q)", cfg.Bot.WakePhrase)
 	} else {
-		log.Println("Voice transcription disabled (no STT API key configured)")
+		log.Println("Voice commands disabled (no STT API key configured)")
 	}
 
 	if err := bot.Start(); err != nil {
@@ -67,6 +75,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 	defer bot.Stop()
 
 	log.Printf("Laserbeak is running. Command prefix: %s", cfg.Discord.CommandPrefix)
+	if cfg.Discord.TextChannelID != "" {
+		log.Printf("Voice command output channel: %s", cfg.Discord.TextChannelID)
+	}
 	log.Println("Press Ctrl+C to exit")
 
 	// Wait for shutdown signal

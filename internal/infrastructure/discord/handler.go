@@ -12,21 +12,30 @@ import (
 // ChatHandler defines the callback for processing a chat message and returning a response.
 type ChatHandler func(ctx context.Context, channelID, userID, content string) (string, error)
 
-// VoiceTranscribeHandler defines the callback for transcribing audio and generating a response.
-type VoiceTranscribeHandler func(ctx context.Context, channelID, userID string, audioWAV []byte) (string, error)
+// VoiceCommandHandler defines the callback for processing voice audio into a command string.
+type VoiceCommandHandler func(ctx context.Context, channelID, userID string, audioWAV []byte) (string, error)
+
+// BotConfig holds Discord bot configuration.
+type BotConfig struct {
+	Token          string
+	CommandPrefix  string
+	GuildID        string // guild for auto-join
+	VoiceChannelID string // voice channel to auto-join
+	TextChannelID  string // text channel for voice command output
+}
 
 // Bot wraps the Discord session and routes messages to application-layer handlers.
 type Bot struct {
-	session        *discordgo.Session
-	commandPrefix  string
-	chatHandler    ChatHandler
-	voiceHandler   VoiceTranscribeHandler
-	voiceListener  *VoiceListener
+	session       *discordgo.Session
+	config        BotConfig
+	chatHandler   ChatHandler
+	voiceHandler  VoiceCommandHandler
+	voiceListener *VoiceListener
 }
 
 // NewBot creates a new Discord Bot.
-func NewBot(token, commandPrefix string) (*Bot, error) {
-	s, err := discordgo.New("Bot " + token)
+func NewBot(cfg BotConfig) (*Bot, error) {
+	s, err := discordgo.New("Bot " + cfg.Token)
 	if err != nil {
 		return nil, fmt.Errorf("create discord session: %w", err)
 	}
@@ -37,7 +46,7 @@ func NewBot(token, commandPrefix string) (*Bot, error) {
 
 	b := &Bot{
 		session:       s,
-		commandPrefix: commandPrefix,
+		config:        cfg,
 		voiceListener: NewVoiceListener(),
 	}
 
@@ -51,8 +60,8 @@ func (b *Bot) SetChatHandler(h ChatHandler) {
 	b.chatHandler = h
 }
 
-// SetVoiceHandler sets the handler for voice transcriptions.
-func (b *Bot) SetVoiceHandler(h VoiceTranscribeHandler) {
+// SetVoiceHandler sets the handler for voice command processing.
+func (b *Bot) SetVoiceHandler(h VoiceCommandHandler) {
 	b.voiceHandler = h
 }
 
@@ -65,6 +74,19 @@ func (b *Bot) Start() error {
 	// Start processing voice transcriptions
 	if b.voiceHandler != nil {
 		go b.processVoiceResults()
+	}
+
+	// Auto-join voice channel if configured
+	if b.config.GuildID != "" && b.config.VoiceChannelID != "" {
+		textCh := b.config.TextChannelID
+		if textCh == "" {
+			log.Println("Warning: voice channel configured but no text channel set for output")
+		}
+		if err := b.voiceListener.Join(b.session, b.config.GuildID, b.config.VoiceChannelID, textCh); err != nil {
+			log.Printf("failed to auto-join voice channel: %v", err)
+		} else {
+			log.Printf("Auto-joined voice channel %s", b.config.VoiceChannelID)
+		}
 	}
 
 	log.Println("Bot is online and listening")
@@ -83,11 +105,11 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 		return
 	}
 
-	if !strings.HasPrefix(m.Content, b.commandPrefix) {
+	if !strings.HasPrefix(m.Content, b.config.CommandPrefix) {
 		return
 	}
 
-	content := strings.TrimPrefix(m.Content, b.commandPrefix)
+	content := strings.TrimPrefix(m.Content, b.config.CommandPrefix)
 	content = strings.TrimSpace(content)
 
 	if content == "" {
@@ -148,13 +170,19 @@ func (b *Bot) handleJoinVoice(s *discordgo.Session, m *discordgo.MessageCreate) 
 		return
 	}
 
-	if err := b.voiceListener.Join(s, m.GuildID, voiceChannelID, m.ChannelID); err != nil {
+	// Use configured text channel for output, fall back to the channel the command was sent in
+	textCh := b.config.TextChannelID
+	if textCh == "" {
+		textCh = m.ChannelID
+	}
+
+	if err := b.voiceListener.Join(s, m.GuildID, voiceChannelID, textCh); err != nil {
 		log.Printf("error joining voice: %v", err)
 		s.ChannelMessageSend(m.ChannelID, "Failed to join your voice channel.")
 		return
 	}
 
-	s.ChannelMessageSend(m.ChannelID, "Joined voice channel. I'll listen and respond here in text.")
+	s.ChannelMessageSend(m.ChannelID, "Joined voice channel. I'll listen and respond in text.")
 }
 
 // handleLeaveVoice leaves the voice channel in the current guild.
@@ -165,8 +193,6 @@ func (b *Bot) handleLeaveVoice(s *discordgo.Session, m *discordgo.MessageCreate)
 
 // handleClear resets conversation history for this channel.
 func (b *Bot) handleClear(s *discordgo.Session, m *discordgo.MessageCreate) {
-	// This is handled by sending "clear" content to the chat handler
-	// which the application layer interprets
 	if b.chatHandler != nil {
 		b.chatHandler(context.Background(), m.ChannelID, m.Author.ID, "/clear")
 	}
@@ -175,13 +201,17 @@ func (b *Bot) handleClear(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 // handleHelp sends usage information.
 func (b *Bot) handleHelp(s *discordgo.Session, m *discordgo.MessageCreate) {
-	help := fmt.Sprintf(`**Laserbeak Bot Commands**
-`+"`%s <message>`"+` — Chat with the LLM
-`+"`%s join`"+` — Join your voice channel and listen
-`+"`%s leave`"+` — Leave voice channel
-`+"`%s clear`"+` — Clear conversation history
-`+"`%s help`"+` — Show this help`,
-		b.commandPrefix, b.commandPrefix, b.commandPrefix, b.commandPrefix, b.commandPrefix)
+	prefix := b.config.CommandPrefix
+	help := fmt.Sprintf("**Laserbeak Bot Commands**\n"+
+		"`%s <message>` — Chat with the LLM\n"+
+		"`%s join` — Join your voice channel and listen\n"+
+		"`%s leave` — Leave voice channel\n"+
+		"`%s clear` — Clear conversation history\n"+
+		"`%s help` — Show this help\n\n"+
+		"**Voice Commands** (say in voice chat):\n"+
+		"`hey m'bot stop` — Sends `!stop` to text chat\n"+
+		"`hey m'bot play <query>` — Sends `!play <query>` to text chat",
+		prefix, prefix, prefix, prefix, prefix)
 	s.ChannelMessageSend(m.ChannelID, help)
 }
 
@@ -193,8 +223,6 @@ func (b *Bot) processVoiceResults() {
 		}
 
 		go func(t VoiceTranscription) {
-			b.session.ChannelTyping(t.ChannelID)
-
 			reply, err := b.voiceHandler(context.Background(), t.ChannelID, t.UserID, t.Audio)
 			if err != nil {
 				log.Printf("voice handler error: %v", err)
@@ -205,7 +233,14 @@ func (b *Bot) processVoiceResults() {
 				return
 			}
 
-			b.sendLongMessage(b.session, t.ChannelID, reply)
+			// Send voice command output to the configured text channel,
+			// falling back to the transcription's associated channel
+			outputCh := b.config.TextChannelID
+			if outputCh == "" {
+				outputCh = t.ChannelID
+			}
+
+			b.session.ChannelMessageSend(outputCh, reply)
 		}(trans)
 	}
 }

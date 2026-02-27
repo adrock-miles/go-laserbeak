@@ -1,6 +1,9 @@
 discord:
   token: "YOUR_DISCORD_BOT_TOKEN"
   commandprefix: "!laser "
+  guildid: ""           # Discord guild (server) ID — required for auto-join
+  voicechannelid: ""    # Voice channel ID to auto-join on startup
+  textchannelid: ""     # Text channel ID where voice commands are output
 
 llm:
   apikey: "YOUR_OPENAI_API_KEY"
@@ -15,3 +18,4 @@ stt:
 bot:
   systemprompt: "You are Laserbeak, a helpful Discord assistant. Respond concisely and helpfully."
   maxhistory: 50
+  wakephrase: "hey m'bot"  # Wake phrase for voice commands

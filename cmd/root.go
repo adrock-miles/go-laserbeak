@@ -13,9 +13,9 @@ var rootCmd = &cobra.Command{
 	Short: "Laserbeak — a Discord LLM bot that listens to voice and chats in text",
 	Long: `Laserbeak is a Discord bot built in Go that:
   - Responds to text commands with LLM-powered replies
-  - Joins voice channels to listen to conversations
-  - Transcribes voice to text via OpenAI Whisper
-  - Sends LLM responses as text messages in Discord`,
+  - Joins voice channels to listen for voice commands
+  - Recognizes "hey m'bot" wake phrase for stop/play commands
+  - Sends command output as text messages in a configurable Discord channel`,
 }
 
 // Execute runs the root command.
@@ -34,6 +34,10 @@ func init() {
 	rootCmd.PersistentFlags().String("llm-model", "", "LLM model name")
 	rootCmd.PersistentFlags().String("stt-api-key", "", "STT API key")
 	rootCmd.PersistentFlags().String("command-prefix", "", "Bot command prefix")
+	rootCmd.PersistentFlags().String("guild-id", "", "Discord guild ID for auto-join")
+	rootCmd.PersistentFlags().String("voice-channel-id", "", "Voice channel ID to auto-join")
+	rootCmd.PersistentFlags().String("text-channel-id", "", "Text channel ID for voice command output")
+	rootCmd.PersistentFlags().String("wake-phrase", "", "Wake phrase for voice commands")
 
 	viper.BindPFlag("discord.token", rootCmd.PersistentFlags().Lookup("discord-token"))
 	viper.BindPFlag("llm.apikey", rootCmd.PersistentFlags().Lookup("llm-api-key"))
@@ -41,4 +45,8 @@ func init() {
 	viper.BindPFlag("llm.model", rootCmd.PersistentFlags().Lookup("llm-model"))
 	viper.BindPFlag("stt.apikey", rootCmd.PersistentFlags().Lookup("stt-api-key"))
 	viper.BindPFlag("discord.commandprefix", rootCmd.PersistentFlags().Lookup("command-prefix"))
+	viper.BindPFlag("discord.guildid", rootCmd.PersistentFlags().Lookup("guild-id"))
+	viper.BindPFlag("discord.voicechannelid", rootCmd.PersistentFlags().Lookup("voice-channel-id"))
+	viper.BindPFlag("discord.textchannelid", rootCmd.PersistentFlags().Lookup("text-channel-id"))
+	viper.BindPFlag("bot.wakephrase", rootCmd.PersistentFlags().Lookup("wake-phrase"))
 }

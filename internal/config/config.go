@@ -19,6 +19,9 @@ type Config struct {
 type DiscordConfig struct {
 	Token          string
 	CommandPrefix  string
+	GuildID        string // guild to operate in (required for auto-join)
+	VoiceChannelID string // voice channel to auto-join on startup
+	TextChannelID  string // text channel for voice command output
 }
 
 // LLMConfig holds LLM API settings.
@@ -39,6 +42,7 @@ type STTConfig struct {
 type BotConfig struct {
 	SystemPrompt string
 	MaxHistory   int
+	WakePhrase   string // wake phrase for voice commands (e.g. "hey m'bot")
 }
 
 // Load reads configuration from environment variables, config files, and flags.
@@ -62,6 +66,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("stt.model", "whisper-1")
 	viper.SetDefault("bot.systemprompt", "You are Laserbeak, a helpful Discord assistant. Respond concisely and helpfully.")
 	viper.SetDefault("bot.maxhistory", 50)
+	viper.SetDefault("bot.wakephrase", "hey m'bot")
 
 	// Read config file (optional)
 	if err := viper.ReadInConfig(); err != nil {
@@ -72,8 +77,11 @@ func Load() (*Config, error) {
 
 	cfg := &Config{
 		Discord: DiscordConfig{
-			Token:         viper.GetString("discord.token"),
-			CommandPrefix: viper.GetString("discord.commandprefix"),
+			Token:          viper.GetString("discord.token"),
+			CommandPrefix:  viper.GetString("discord.commandprefix"),
+			GuildID:        viper.GetString("discord.guildid"),
+			VoiceChannelID: viper.GetString("discord.voicechannelid"),
+			TextChannelID:  viper.GetString("discord.textchannelid"),
 		},
 		LLM: LLMConfig{
 			APIKey:  viper.GetString("llm.apikey"),
@@ -88,6 +96,7 @@ func Load() (*Config, error) {
 		Bot: BotConfig{
 			SystemPrompt: viper.GetString("bot.systemprompt"),
 			MaxHistory:   viper.GetInt("bot.maxhistory"),
+			WakePhrase:   viper.GetString("bot.wakephrase"),
 		},
 	}
 
