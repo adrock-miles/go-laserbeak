@@ -81,20 +81,7 @@ func (b *Bot) Start() error {
 		go b.processVoiceResults()
 	}
 
-	// Auto-join voice channel if configured
-	if b.config.GuildID != "" && b.config.VoiceChannelID != "" {
-		textCh := b.config.TextChannelID
-		if textCh == "" {
-			log.Println("Warning: voice channel configured but no text channel set for output")
-		}
-		if err := b.voiceListener.Join(b.session, b.config.GuildID, b.config.VoiceChannelID, textCh); err != nil {
-			log.Printf("failed to auto-join voice channel: %v", err)
-		} else {
-			log.Printf("Auto-joined voice channel %s", b.config.VoiceChannelID)
-		}
-	}
-
-	log.Println("Bot is online and listening")
+	log.Println("Bot is online and listening. Use the join command to connect to a voice channel.")
 	return nil
 }
 
