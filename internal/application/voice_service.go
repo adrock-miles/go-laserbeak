@@ -2,8 +2,10 @@ package application
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 
 	"github.com/adrock-miles/GoBot-Laserbeak/internal/domain/bot"
@@ -19,20 +21,23 @@ type VoiceCommand struct {
 // It transcribes audio, checks for the wake phrase, and parses voice commands.
 // For "play" commands, it uses the LLM to match against available options.
 type VoiceService struct {
-	stt         bot.STTService
-	llm         bot.LLMService
-	playOptions bot.PlayOptionsService
-	wakePhrase  string
+	stt              bot.STTService
+	llm              bot.LLMService
+	playOptions      bot.PlayOptionsService
+	localOptionsFile string
+	wakePhrase       string
 }
 
 // NewVoiceService creates a new VoiceService.
 // playOptions and llm may be nil — if so, play commands pass through the raw transcription.
-func NewVoiceService(stt bot.STTService, wakePhrase string, llm bot.LLMService, playOptions bot.PlayOptionsService) *VoiceService {
+// localOptionsFile is the path to a JSON file with default play options (may be empty).
+func NewVoiceService(stt bot.STTService, wakePhrase string, llm bot.LLMService, playOptions bot.PlayOptionsService, localOptionsFile string) *VoiceService {
 	return &VoiceService{
-		stt:         stt,
-		llm:         llm,
-		playOptions: playOptions,
-		wakePhrase:  strings.ToLower(wakePhrase),
+		stt:              stt,
+		llm:              llm,
+		playOptions:      playOptions,
+		localOptionsFile: localOptionsFile,
+		wakePhrase:       strings.ToLower(wakePhrase),
 	}
 }
 
@@ -83,6 +88,9 @@ func (s *VoiceService) parseCommand(ctx context.Context, transcription string) (
 		if query == "" {
 			return VoiceCommand{}, false
 		}
+		if strings.EqualFold(strings.TrimSpace(query), "random") {
+			return VoiceCommand{Text: "!pr"}, true
+		}
 		matched := s.matchPlayQuery(ctx, query)
 		return VoiceCommand{Text: "!play " + matched}, true
 	}
@@ -90,17 +98,51 @@ func (s *VoiceService) parseCommand(ctx context.Context, transcription string) (
 	return VoiceCommand{}, false
 }
 
+// loadLocalOptions reads play options from the local JSON file.
+func (s *VoiceService) loadLocalOptions() []bot.PlayOption {
+	if s.localOptionsFile == "" {
+		return nil
+	}
+	data, err := os.ReadFile(s.localOptionsFile)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			log.Printf("failed to read local play options file %s: %v", s.localOptionsFile, err)
+		}
+		return nil
+	}
+	var options []bot.PlayOption
+	if err := json.Unmarshal(data, &options); err != nil {
+		// Try as array of strings
+		var names []string
+		if err := json.Unmarshal(data, &names); err != nil {
+			log.Printf("failed to parse local play options file %s: %v", s.localOptionsFile, err)
+			return nil
+		}
+		for _, name := range names {
+			options = append(options, bot.PlayOption{Name: name})
+		}
+	}
+	return options
+}
+
 // matchPlayQuery tries to match a spoken query against the available play options
 // using the LLM. Falls back to the raw query if matching is unavailable.
 func (s *VoiceService) matchPlayQuery(ctx context.Context, query string) string {
-	if s.playOptions == nil || s.llm == nil {
+	if s.llm == nil {
 		return query
 	}
 
-	options, err := s.playOptions.GetOptions(ctx)
-	if err != nil {
-		log.Printf("failed to get play options for matching: %v", err)
-		return query
+	// Merge local file options with API options
+	var options []bot.PlayOption
+	options = append(options, s.loadLocalOptions()...)
+
+	if s.playOptions != nil {
+		apiOptions, err := s.playOptions.GetOptions(ctx)
+		if err != nil {
+			log.Printf("failed to get play options for matching: %v", err)
+		} else {
+			options = append(options, apiOptions...)
+		}
 	}
 
 	if len(options) == 0 {

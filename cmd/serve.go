@@ -76,7 +76,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 				cfg.PlayOptions.APIURL, cfg.PlayOptions.CacheTTL)
 		}
 
-		voiceService := application.NewVoiceService(sttClient, cfg.Bot.WakePhrase, llmClient, playOpts)
+		voiceService := application.NewVoiceService(sttClient, cfg.Bot.WakePhrase, llmClient, playOpts, "play_options.json")
 		discordBot.SetVoiceHandler(voiceService.HandleVoice)
 		log.Printf("Voice commands enabled (wake phrase: %q)", cfg.Bot.WakePhrase)
 
