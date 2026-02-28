@@ -6,7 +6,7 @@ A Discord LLM bot built in Go that listens to voice channels and responds with t
 
 - **Text Chat**: Respond to text commands with LLM-powered replies
 - **Voice Commands**: Listen in voice channels for wake-phrase-activated commands
-- **Wake Phrase**: Say "hey m'bot" followed by a command (configurable)
+- **Wake Phrase**: Say "laser" followed by a command (configurable)
 - **Configurable Channels**: Set default voice channel to join and text channel for output
 - **Conversation Memory**: Per-channel conversation history with configurable limits
 - **OpenAI Compatible**: Works with any OpenAI-compatible API (OpenAI, Ollama, etc.)
@@ -65,12 +65,12 @@ LASERBEAK_DISCORD_TOKEN=... LASERBEAK_LLM_APIKEY=... ./laserbeak serve
 
 ## Voice Commands
 
-Voice commands require the wake phrase (default: "hey m'bot") to be spoken first. The bot transcribes speech via OpenAI Whisper and parses the command.
+Voice commands require the wake phrase (default: "laser") to be spoken first. The bot transcribes speech via OpenAI Whisper and parses the command.
 
 | Voice Command | Output to Text Chat |
 |---------------|---------------------|
-| "hey m'bot stop" | `!stop` |
-| "hey m'bot play Never Gonna Give You Up" | `!play Never Gonna Give You Up` |
+| "laser stop" | `!stop` |
+| "laser play Never Gonna Give You Up" | `!play Never Gonna Give You Up` |
 
 Voice command output is sent to the configured text channel (`discord.textchannelid`).
 
@@ -89,7 +89,7 @@ Configuration is loaded from (in order of precedence):
 | `discord.guildid` | `LASERBEAK_DISCORD_GUILDID` | Guild ID for auto-join |
 | `discord.voicechannelid` | `LASERBEAK_DISCORD_VOICECHANNELID` | Voice channel to auto-join |
 | `discord.textchannelid` | `LASERBEAK_DISCORD_TEXTCHANNELID` | Text channel for voice command output |
-| `bot.wakephrase` | `LASERBEAK_BOT_WAKEPHRASE` | Wake phrase (default: "hey m'bot") |
+| `bot.wakephrase` | `LASERBEAK_BOT_WAKEPHRASE` | Wake phrase (default: "laser") |
 | `llm.apikey` | `LASERBEAK_LLM_APIKEY` | LLM API key (required) |
 | `stt.apikey` | `LASERBEAK_STT_APIKEY` | STT API key (enables voice) |
 
