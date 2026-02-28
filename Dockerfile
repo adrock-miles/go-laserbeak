@@ -16,7 +16,7 @@ RUN CGO_ENABLED=1 go build -o /bin/laserbeak .
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libopus0 ca-certificates \
+    libopus0 libopusfile0 ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /bin/laserbeak /usr/local/bin/laserbeak
