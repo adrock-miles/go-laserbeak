@@ -83,6 +83,9 @@ func (s *VoiceService) parseCommand(ctx context.Context, transcription string) (
 		if query == "" {
 			return VoiceCommand{}, false
 		}
+		if strings.Contains(strings.ToLower(query), "random") {
+			return VoiceCommand{Text: "!pr"}, true
+		}
 		matched := s.matchPlayQuery(ctx, query)
 		return VoiceCommand{Text: "!play " + matched}, true
 	}

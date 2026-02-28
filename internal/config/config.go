@@ -50,7 +50,7 @@ type STTConfig struct {
 type BotConfig struct {
 	SystemPrompt string
 	MaxHistory   int
-	WakePhrase   string // wake phrase for voice commands (e.g. "hey m'bot")
+	WakePhrase   string // wake phrase for voice commands (e.g. "laser")
 }
 
 // Load reads configuration from environment variables, config files, and flags.
@@ -100,7 +100,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("stt.model", "whisper-1")
 	viper.SetDefault("bot.systemprompt", "You are Laserbeak, a helpful Discord assistant. Respond concisely and helpfully.")
 	viper.SetDefault("bot.maxhistory", 50)
-	viper.SetDefault("bot.wakephrase", "hey m'bot")
+	viper.SetDefault("bot.wakephrase", "laser")
 	viper.SetDefault("playoptions.cachettl", "5m")
 
 	// Read config file (optional)

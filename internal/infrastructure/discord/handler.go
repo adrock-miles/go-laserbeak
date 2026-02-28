@@ -213,8 +213,8 @@ func (b *Bot) handleHelp(s *discordgo.Session, m *discordgo.MessageCreate) {
 		"`%s clear` — Clear conversation history\n"+
 		"`%s help` — Show this help\n\n"+
 		"**Voice Commands** (say in voice chat):\n"+
-		"`hey m'bot stop` — Sends `!stop` to text chat\n"+
-		"`hey m'bot play <query>` — Sends `!play <query>` to text chat",
+		"`laser stop` — Sends `!stop` to text chat\n"+
+		"`laser play <query>` — Sends `!play <query>` to text chat",
 		prefix, prefix, prefix, prefix, prefix)
 	s.ChannelMessageSend(m.ChannelID, help)
 }
