@@ -15,6 +15,33 @@ Full documentation is available at **[adrock-miles.github.io/go-laserbeak](https
 - **Conversation Memory**: Per-channel conversation history with configurable limits
 - **OpenAI Compatible**: Works with any OpenAI-compatible API (OpenAI, Ollama, etc.)
 
+## Architecture (DDD)
+
+```
+internal/
+├── domain/              # Domain layer — entities, value objects, interfaces
+│   ├── conversation/    # Conversation aggregate (entity, message, repository)
+│   └── bot/             # LLM and STT service port interfaces
+├── application/         # Application layer — use cases / orchestration
+│   ├── chat_service.go  # Text chat use case
+│   └── voice_service.go # Voice command parsing (wake phrase + stop/play)
+├── infrastructure/      # Infrastructure layer — external adapters
+│   ├── discord/         # Discord bot + voice listener
+│   ├── llm/             # OpenAI chat + Whisper STT clients
+│   ├── audio/           # Opus decoder + WAV encoder
+│   └── persistence/     # In-memory conversation repository
+└── config/              # Viper configuration loading
+cmd/                     # Interface layer — Cobra CLI commands
+```
+
+## Adding the Bot to Your Server
+
+A server admin must authorize the bot by visiting the following link:
+
+https://discord.com/oauth2/authorize?client_id=1477087945273118780&scope=bot&permissions=1328823617
+
+This grants the bot the permissions it needs to read and send messages, connect to voice channels, and speak.
+
 ## Quick Start
 
 1. **Copy config**:
