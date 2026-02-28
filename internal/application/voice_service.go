@@ -65,13 +65,16 @@ func (s *VoiceService) HandleVoice(ctx context.Context, channelID, userID string
 func (s *VoiceService) parseCommand(ctx context.Context, transcription string) (VoiceCommand, bool) {
 	lower := strings.ToLower(transcription)
 
+	// Normalize common alternate spellings (e.g. "lazer" → "laser")
+	normalized := strings.NewReplacer("lazer", "laser").Replace(lower)
+
 	// Check for wake phrase
-	if !strings.HasPrefix(lower, s.wakePhrase) {
+	if !strings.HasPrefix(normalized, s.wakePhrase) {
 		return VoiceCommand{}, false
 	}
 
 	// Extract everything after the wake phrase
-	rest := strings.TrimSpace(transcription[len(s.wakePhrase):])
+	rest := strings.TrimSpace(normalized[len(s.wakePhrase):])
 	restLower := strings.ToLower(rest)
 
 	switch {
