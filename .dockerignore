@@ -2,3 +2,6 @@
 .env
 config.yaml
 *.md
+docs/
+.github/
+Makefile
