@@ -138,8 +138,9 @@ func (vl *VoiceListener) LeaveAll() {
 // listenLoop receives Opus packets from Discord and assembles per-user utterances.
 func (vl *VoiceListener) listenLoop(ctx context.Context, conn *voiceConn) {
 	type userBuffer struct {
-		frames   [][]int16
+		pcm      []int16 // accumulated PCM samples (flat)
 		lastSeen time.Time
+		frames   int // number of frames collected (for minSpeechFrames check)
 	}
 
 	decoder, err := audio.NewOpusDecoder()
@@ -147,6 +148,9 @@ func (vl *VoiceListener) listenLoop(ctx context.Context, conn *voiceConn) {
 		log.Printf("error creating opus decoder: %v", err)
 		return
 	}
+
+	// Reusable decode buffer — avoids allocation per packet.
+	decodeBuf := make([]int16, audio.FrameSize*audio.Channels)
 
 	buffers := make(map[uint32]*userBuffer) // SSRC -> buffer
 
@@ -165,17 +169,19 @@ func (vl *VoiceListener) listenLoop(ctx context.Context, conn *voiceConn) {
 				return
 			}
 
-			pcm, err := decoder.Decode(pkt.Opus)
+			n, err := decoder.DecodeInto(pkt.Opus, decodeBuf)
 			if err != nil {
 				continue
 			}
 
 			buf, exists := buffers[pkt.SSRC]
 			if !exists {
-				buf = &userBuffer{}
+				// Pre-allocate for ~2s of audio to reduce grow-copies.
+				buf = &userBuffer{pcm: make([]int16, 0, audio.SampleRate*audio.Channels*2)}
 				buffers[pkt.SSRC] = buf
 			}
-			buf.frames = append(buf.frames, pcm)
+			buf.pcm = append(buf.pcm, decodeBuf[:n]...)
+			buf.frames++
 			buf.lastSeen = time.Now()
 
 		case <-ticker.C:
@@ -185,9 +191,9 @@ func (vl *VoiceListener) listenLoop(ctx context.Context, conn *voiceConn) {
 					continue
 				}
 
-				if len(buf.frames) >= minSpeechFrames {
+				if buf.frames >= minSpeechFrames {
 					userID := vl.getUserID(ssrc)
-					vl.emitTranscription(conn, userID, buf.frames)
+					vl.emitPCM(conn, userID, buf.pcm)
 				}
 
 				delete(buffers, ssrc)
@@ -196,17 +202,8 @@ func (vl *VoiceListener) listenLoop(ctx context.Context, conn *voiceConn) {
 	}
 }
 
-// emitTranscription converts accumulated PCM frames to WAV and sends to results channel.
-func (vl *VoiceListener) emitTranscription(conn *voiceConn, userID string, frames [][]int16) {
-	totalSamples := 0
-	for _, f := range frames {
-		totalSamples += len(f)
-	}
-	pcm := make([]int16, 0, totalSamples)
-	for _, f := range frames {
-		pcm = append(pcm, f...)
-	}
-
+// emitPCM converts accumulated PCM samples to WAV and sends to results channel.
+func (vl *VoiceListener) emitPCM(conn *voiceConn, userID string, pcm []int16) {
 	wav, err := audio.PCMToWAV(pcm, audio.SampleRate, audio.Channels)
 	if err != nil {
 		log.Printf("error encoding WAV: %v", err)

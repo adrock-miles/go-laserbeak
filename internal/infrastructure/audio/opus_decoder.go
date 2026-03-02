@@ -1,9 +1,9 @@
 package audio
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
+	"unsafe"
 
 	"gopkg.in/hraban/opus.v2"
 )
@@ -39,53 +39,48 @@ func (d *OpusDecoder) Decode(opusData []byte) ([]int16, error) {
 	return pcm[:n*Channels], nil
 }
 
-// PCMToWAV converts raw PCM int16 samples to a WAV byte slice.
-func PCMToWAV(samples []int16, sampleRate, channels int) ([]byte, error) {
-	var buf bytes.Buffer
-
-	dataSize := len(samples) * 2 // 2 bytes per int16
-
-	// WAV header
-	buf.WriteString("RIFF")
-	if err := binary.Write(&buf, binary.LittleEndian, uint32(36+dataSize)); err != nil {
-		return nil, fmt.Errorf("write RIFF size: %w", err)
+// DecodeInto decodes a single Opus frame into the provided buffer, avoiding allocation.
+// The buffer must be at least FrameSize*Channels in length.
+// Returns the number of decoded samples (per channel).
+func (d *OpusDecoder) DecodeInto(opusData []byte, pcm []int16) (int, error) {
+	n, err := d.decoder.Decode(opusData, pcm)
+	if err != nil {
+		return 0, fmt.Errorf("decode opus frame: %w", err)
 	}
-	buf.WriteString("WAVE")
+	return n * Channels, nil
+}
+
+// PCMToWAV converts raw PCM int16 samples to a WAV byte slice.
+// This uses a single pre-allocated buffer and direct byte copy for the sample
+// data, avoiding the reflection overhead of binary.Write on large slices.
+func PCMToWAV(samples []int16, sampleRate, channels int) ([]byte, error) {
+	dataSize := len(samples) * 2 // 2 bytes per int16
+	headerSize := 44             // standard WAV header
+	buf := make([]byte, headerSize+dataSize)
+
+	// RIFF header
+	copy(buf[0:4], "RIFF")
+	binary.LittleEndian.PutUint32(buf[4:8], uint32(36+dataSize))
+	copy(buf[8:12], "WAVE")
 
 	// fmt subchunk
-	buf.WriteString("fmt ")
-	if err := binary.Write(&buf, binary.LittleEndian, uint32(16)); err != nil {
-		return nil, fmt.Errorf("write fmt size: %w", err)
-	}
-	if err := binary.Write(&buf, binary.LittleEndian, uint16(1)); err != nil { // PCM
-		return nil, fmt.Errorf("write audio format: %w", err)
-	}
-	if err := binary.Write(&buf, binary.LittleEndian, uint16(channels)); err != nil {
-		return nil, fmt.Errorf("write channels: %w", err)
-	}
-	if err := binary.Write(&buf, binary.LittleEndian, uint32(sampleRate)); err != nil {
-		return nil, fmt.Errorf("write sample rate: %w", err)
-	}
-	byteRate := uint32(sampleRate * channels * 2)
-	if err := binary.Write(&buf, binary.LittleEndian, byteRate); err != nil {
-		return nil, fmt.Errorf("write byte rate: %w", err)
-	}
-	blockAlign := uint16(channels * 2)
-	if err := binary.Write(&buf, binary.LittleEndian, blockAlign); err != nil {
-		return nil, fmt.Errorf("write block align: %w", err)
-	}
-	if err := binary.Write(&buf, binary.LittleEndian, uint16(16)); err != nil { // bits per sample
-		return nil, fmt.Errorf("write bits per sample: %w", err)
-	}
+	copy(buf[12:16], "fmt ")
+	binary.LittleEndian.PutUint32(buf[16:20], 16)       // subchunk size
+	binary.LittleEndian.PutUint16(buf[20:22], 1)        // PCM format
+	binary.LittleEndian.PutUint16(buf[22:24], uint16(channels))
+	binary.LittleEndian.PutUint32(buf[24:28], uint32(sampleRate))
+	binary.LittleEndian.PutUint32(buf[28:32], uint32(sampleRate*channels*2)) // byte rate
+	binary.LittleEndian.PutUint16(buf[32:34], uint16(channels*2))           // block align
+	binary.LittleEndian.PutUint16(buf[34:36], 16)                           // bits per sample
 
 	// data subchunk
-	buf.WriteString("data")
-	if err := binary.Write(&buf, binary.LittleEndian, uint32(dataSize)); err != nil {
-		return nil, fmt.Errorf("write data size: %w", err)
-	}
-	if err := binary.Write(&buf, binary.LittleEndian, samples); err != nil {
-		return nil, fmt.Errorf("write PCM data: %w", err)
-	}
+	copy(buf[36:40], "data")
+	binary.LittleEndian.PutUint32(buf[40:44], uint32(dataSize))
 
-	return buf.Bytes(), nil
+	// Copy PCM data directly — reinterpret []int16 as []byte to avoid
+	// per-sample binary.Write overhead.
+	pcmBytes := unsafe.Slice((*byte)(unsafe.Pointer(unsafe.SliceData(samples))), dataSize)
+	copy(buf[headerSize:], pcmBytes)
+
+	return buf, nil
 }

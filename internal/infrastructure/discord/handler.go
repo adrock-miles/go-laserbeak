@@ -6,6 +6,7 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -35,6 +36,9 @@ type Bot struct {
 
 	seenMu sync.Mutex
 	seenID string // last processed message ID to deduplicate gateway redeliveries
+
+	// chatSem limits concurrent LLM requests to avoid overwhelming the API.
+	chatSem chan struct{}
 }
 
 // NewBot creates a new Discord Bot.
@@ -53,6 +57,7 @@ func NewBot(cfg BotConfig) (*Bot, error) {
 		session:       s,
 		config:        cfg,
 		voiceListener: NewVoiceListener(),
+		chatSem:       make(chan struct{}, 10), // up to 10 concurrent LLM requests
 	}
 
 	s.AddHandler(b.onMessageCreate)
@@ -139,16 +144,31 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 		return
 	}
 
-	s.ChannelTyping(m.ChannelID)
+	// Dispatch asynchronously so the gateway handler returns immediately.
+	// The semaphore bounds concurrent LLM requests.
+	go b.handleChat(s, m.ChannelID, m.Author.ID, content)
+}
 
-	reply, err := b.chatHandler(context.Background(), m.ChannelID, m.Author.ID, content)
+// handleChat processes a chat message asynchronously with bounded concurrency.
+func (b *Bot) handleChat(s *discordgo.Session, channelID, userID, content string) {
+	// Fire-and-forget typing indicator (don't block on it).
+	go s.ChannelTyping(channelID)
+
+	// Acquire semaphore slot to bound concurrent LLM calls.
+	b.chatSem <- struct{}{}
+	defer func() { <-b.chatSem }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	reply, err := b.chatHandler(ctx, channelID, userID, content)
 	if err != nil {
 		log.Printf("chat handler error: %v", err)
-		s.ChannelMessageSend(m.ChannelID, "Sorry, I encountered an error processing your message.")
+		s.ChannelMessageSend(channelID, "Sorry, I encountered an error processing your message.")
 		return
 	}
 
-	b.sendLongMessage(s, m.ChannelID, reply)
+	b.sendLongMessage(s, channelID, reply)
 }
 
 // handleJoinVoice joins the voice channel the user is currently in.
