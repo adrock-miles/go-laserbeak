@@ -32,7 +32,14 @@ func NewSTTClient(apiKey, baseURL, model string) *STTClient {
 		apiKey:  apiKey,
 		baseURL: baseURL,
 		model:   model,
-		client:  &http.Client{},
+		client: &http.Client{
+			Timeout: 30 * time.Second,
+			Transport: &http.Transport{
+				MaxIdleConns:        20,
+				MaxIdleConnsPerHost: 10,
+				IdleConnTimeout:     90 * time.Second,
+			},
+		},
 	}
 }
 
